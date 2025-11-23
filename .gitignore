@@ -1,0 +1,37 @@
+# Environment variables (contains passwords)
+.env
+
+# Database volumes (too large for git)
+volumes/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Virtual environments
+venv/
+env/
+*.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# InfluxDB token
+.influx_token
+
+# Temporary files
+*.tmp
+*.bak
+*~
