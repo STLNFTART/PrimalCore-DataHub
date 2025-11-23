@@ -80,3 +80,73 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
+  # BATCH 2: Core Missing Pieces
+
+  postgres:
+    image: docker.io/library/postgres:16-alpine
+    container_name: primal_postgres
+    environment:
+      POSTGRES_DB: primal_core
+      POSTGRES_USER: primal_user
+      POSTGRES_PASSWORD: "${POSTGRES_CORE_PASSWORD}"
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports: ["5432:5432"]
+    volumes: ["./volumes/postgres:/var/lib/postgresql/data"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD","pg_isready","-U","primal_user","-d","primal_core"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mongodb:
+    image: docker.io/library/mongo:7
+    container_name: primal_mongodb
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: "${MONGO_USER}"
+      MONGO_INITDB_ROOT_PASSWORD: "${MONGO_PASSWORD}"
+      MONGO_INITDB_DATABASE: primal_data
+    ports: ["27017:27017"]
+    volumes: ["./volumes/mongodb:/data/db"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD","mongosh","--eval","db.runCommand({ ping: 1 })"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  elasticsearch:
+    image: docker.io/library/elasticsearch:8.11.1
+    container_name: primal_elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms1g -Xmx1g"
+    ports: ["9200:9200","9300:9300"]
+    volumes: ["./volumes/elasticsearch:/usr/share/elasticsearch/data"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD","curl","-f","http://localhost:9200/_cluster/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  prometheus:
+    image: docker.io/prom/prometheus:latest
+    container_name: primal_prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    ports: ["9090:9090"]
+    volumes:
+      - "./config/prometheus.yml:/etc/prometheus/prometheus.yml"
+      - "./volumes/prometheus:/prometheus"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD","wget","--spider","-q","http://localhost:9090/-/healthy"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
