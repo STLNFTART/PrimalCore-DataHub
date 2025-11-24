@@ -6,44 +6,48 @@ A fully realized in-house R&D data integration pipeline leveraging Primal Logic 
 
 This pipeline implements the foundational data infrastructure for the Primal Logic research program, enabling cross-domain analysis and validation of mathematical models with real parameter values.
 
-## Current Configuration: 6 Core Databases
+## Current Configuration: 10 Databases (Batch 1 + Batch 2)
 
-### 1. Redis
-- **Purpose**: Fast key-value caching and real-time data exchange
-- **Port**: 6379
-- **Access**: `redis-cli -a redispw`
+### Batch 1: Foundation (6 Databases)
 
-### 2. TimescaleDB (PostgreSQL + time-series extensions)
-- **Purpose**: Time-series data storage with SQL capabilities
-- **Port**: 5433
-- **Database**: `telemetry`
-- **Table**: `readings(ts timestamptz, k text, v double precision)`
-- **Access**: `psql -h localhost -p 5433 -U postgres -d telemetry`
+**1. Redis** - Fast key-value caching
+- Port: 6379 | Access: `redis-cli -a redispw`
 
-### 3. InfluxDB 2.x
-- **Purpose**: High-performance time-series database
-- **Port**: 8086
-- **Organization**: `Primal_Pipe_Line`
-- **Bucket**: `default`
-- **Access**: Via InfluxDB CLI or HTTP API
+**2. TimescaleDB** - PostgreSQL + time-series extensions
+- Port: 5433 | Database: `telemetry`
+- Access: `psql -h localhost -p 5433 -U postgres -d telemetry`
 
-### 4. Neo4j
-- **Purpose**: Graph database for relationship mapping
-- **Ports**: 7474 (HTTP), 7687 (Bolt)
-- **Access**: `http://localhost:7474` or `cypher-shell -u neo4j -p neo4jpass`
+**3. InfluxDB** - High-performance time-series
+- Port: 8086 | Org: `Primal_Pipe_Line` | Bucket: `default`
 
-### 5. ClickHouse
-- **Purpose**: OLAP database for analytical queries
-- **Port**: 8123 (HTTP), 9009 (native)
-- **Database**: `logs`
-- **Table**: `logs.events(ts DateTime, k String, v Float64)`
-- **Access**: `clickhouse-client` or `curl http://localhost:8123`
+**4. Neo4j** - Graph database
+- Ports: 7474 (HTTP), 7687 (Bolt)
+- Web UI: `http://localhost:7474`
 
-### 6. Qdrant
-- **Purpose**: Vector similarity search for embeddings
-- **Port**: 6333
-- **Collection**: `smoke` (384-dimensional vectors)
-- **Access**: HTTP API at `http://localhost:6333`
+**5. ClickHouse** - OLAP analytics
+- Port: 8123 (HTTP), 9009 (native)
+- Database: `logs` | Table: `logs.events`
+
+**6. Qdrant** - Vector embeddings
+- Port: 6333 | Collection: `smoke`
+
+### Batch 2: Core Extensions (4 Databases)
+
+**7. PostgreSQL** - Standard relational database
+- Port: 5432 | Database: `primal_core`
+- Access: `psql -h localhost -U primal_user -d primal_core`
+
+**8. MongoDB** - Document store
+- Port: 27017 | Database: `primal_core`
+- Access: `mongosh -u primal_admin -p mongopass`
+
+**9. Elasticsearch** - Full-text search
+- Port: 9200 (HTTP), 9300 (native)
+- Web UI: `http://localhost:9200`
+
+**10. Prometheus** - Metrics monitoring
+- Port: 9090
+- Web UI: `http://localhost:9090`
 
 ## Primal Logic Parameters
 
@@ -63,58 +67,94 @@ The pipeline is configured with the following validated kernel parameters:
 
 ### Prerequisites
 - Docker or Podman installed
-- At least 8GB RAM available
-- 20GB free disk space
+- At least 12GB RAM available
+- 100GB free disk space
+- Python 3.9+ with pip
 
-### Launch All Databases
+### Step 1: Launch All 10 Databases
 
 ```bash
-# Using Docker Compose
-docker-compose up -d
+# Clone and navigate to repository
+cd /home/user/PrimalCore-DataHub
 
-# Using Podman Compose
-podman-compose up -d
+# Start all containers
+podman-compose up -d  # or docker-compose up -d
 
-# Check status
-docker-compose ps
-# or
-podman ps --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
+# Verify all 10 containers are running
+podman ps
 ```
 
-### Initialize Databases
+### Step 2: Install Python Dependencies
 
 ```bash
-# TimescaleDB setup
-docker exec -e PGPASSWORD=pgpass primal_timescaledb psql -U postgres -c "CREATE DATABASE telemetry;"
-docker exec -e PGPASSWORD=pgpass primal_timescaledb psql -U postgres -d telemetry -c "CREATE EXTENSION IF NOT EXISTS timescaledb; CREATE TABLE IF NOT EXISTS readings(ts timestamptz, k text, v double precision); SELECT create_hypertable('readings','ts', if_not_exists=>true);"
+pip3 install -r requirements.txt
+```
 
-# InfluxDB setup (first time only)
-docker exec primal_influxdb influx setup --username admin --password adminpass --org Primal_Pipe_Line --bucket default --force
+### Step 3: Initialize Databases
 
-# ClickHouse setup
-docker exec primal_clickhouse clickhouse-client -q "CREATE DATABASE IF NOT EXISTS logs; CREATE TABLE IF NOT EXISTS logs.events(ts DateTime, k String, v Float64) ENGINE=MergeTree ORDER BY ts;"
+**See SETUP_GUIDE.md for complete initialization instructions.**
 
-# Qdrant collection
-curl -X PUT 'http://localhost:6333/collections/vectors' \
+Quick initialization:
+
+```bash
+# PostgreSQL (core relational)
+podman exec -i primal_postgres psql -U primal_user -d primal_core < init_postgres.sql
+
+# TimescaleDB (time-series)
+podman exec primal_timescaledb psql -U postgres -d telemetry -c "
+  CREATE TABLE IF NOT EXISTS readings(ts TIMESTAMPTZ, k TEXT, v DOUBLE PRECISION);
+  SELECT create_hypertable('readings', 'ts', if_not_exists => TRUE);
+"
+
+# ClickHouse (analytics)
+podman exec primal_clickhouse clickhouse-client --query "
+  CREATE DATABASE IF NOT EXISTS logs;
+  CREATE TABLE IF NOT EXISTS logs.events(ts DateTime, k String, v Float64)
+  ENGINE=MergeTree ORDER BY ts;
+"
+
+# Qdrant (vectors)
+curl -X PUT http://localhost:6333/collections/smoke \
   -H 'Content-Type: application/json' \
-  -d '{"vectors":{"size":384,"distance":"Cosine"}}'
+  -d '{"vectors": {"size": 4, "distance": "Cosine"}}'
+
+# Elasticsearch (search)
+curl -X PUT http://localhost:9200/primal-events
 ```
 
-### Log Data to All Databases
+### Step 4: Test the Pipeline
 
 ```bash
-# Make script executable
-chmod +x log_all.sh
+# Run automated test suite
+python3 test_pipeline.py
+```
 
-# Log a single event (key, value)
-./log_all.sh boot 7
+Expected output: "✓ ALL TESTS PASSED (5/5)"
 
-# Log custom data
-./log_all.sh temperature 23.5
+### Step 5: Use the Connector Layer
+
+```python
+from connectors import PrimalDataMesh
+
+# Initialize unified interface
+mesh = PrimalDataMesh()
+
+# Write to all 10 databases simultaneously
+results = mesh.write_event(
+    key='primal_alpha',
+    value=0.55,
+    metadata={'lambda': 0.115, 'K': 1.47}
+)
+
+# Query from all databases
+recent = mesh.query_recent_events('primal_alpha', limit=10)
+
+mesh.close()
 ```
 
 ## Connection URIs
 
+### Batch 1
 - **Redis**: `redis://:redispw@localhost:6379`
 - **TimescaleDB**: `postgres://postgres:pgpass@localhost:5433/telemetry`
 - **InfluxDB**: `http://localhost:8086` (requires token)
@@ -123,45 +163,62 @@ chmod +x log_all.sh
 - **ClickHouse**: `http://localhost:8123`
 - **Qdrant**: `http://localhost:6333`
 
+### Batch 2
+- **PostgreSQL**: `postgres://primal_user:primalcorepass@localhost:5432/primal_core`
+- **MongoDB**: `mongodb://primal_admin:mongopass@localhost:27017/primal_core`
+- **Elasticsearch**: `http://localhost:9200`
+- **Prometheus**: `http://localhost:9090`
+
 ## Architecture
 
-### Current State (6 Databases)
+### Current State (10 Databases - Batch 1 + Batch 2)
 ```
-┌─────────────────────────────────────────────────┐
-│          Primal Logic Core Engine               │
-│     (α=0.55, λ=0.115, K=1.47)                  │
-└──────────────┬──────────────────────────────────┘
-               │
-       ┌───────┴────────┐
-       │   log_all.sh   │  ← Unified data ingestion
-       └───────┬────────┘
-               │
-       ┌───────┴────────────────────────┐
-       │                                │
-   ┌───▼───┐  ┌────▼────┐  ┌────▼────┐ │
-   │ Redis │  │TimescaleDB│ InfluxDB │ │
-   └───────┘  └──────────┘ └─────────┘ │
-       │                                │
-   ┌───▼───┐  ┌────▼────┐  ┌────▼────┐ │
-   │ Neo4j │  │ClickHouse│ │ Qdrant  │ │
-   └───────┘  └──────────┘ └─────────┘ │
-                                        │
-                  ┌─────────────────────▼──┐
-                  │    Analysis Pipeline    │
-                  │  Kernel v1, v3, v4     │
-                  └────────────────────────┘
+┌──────────────────────────────────────────────────────────┐
+│            Primal Logic Core Engine                      │
+│       (α=0.55, λ=0.115, K=1.47)                         │
+└────────────────────┬─────────────────────────────────────┘
+                     │
+            ┌────────▼─────────┐
+            │ PrimalDataMesh   │  ← Unified Python Connector
+            │  connectors.py   │
+            └────────┬─────────┘
+                     │
+        ┌────────────┴────────────────┐
+        │                             │
+┌───────▼────────┐          ┌─────────▼────────┐
+│   BATCH 1 (6)  │          │   BATCH 2 (4)    │
+│                │          │                  │
+│ • Redis        │          │ • PostgreSQL     │
+│ • TimescaleDB  │          │ • MongoDB        │
+│ • InfluxDB     │          │ • Elasticsearch  │
+│ • Neo4j        │          │ • Prometheus     │
+│ • ClickHouse   │          │                  │
+│ • Qdrant       │          │                  │
+└────────┬───────┘          └─────────┬────────┘
+         │                            │
+         └──────────┬─────────────────┘
+                    │
+         ┌──────────▼──────────┐
+         │  Analysis Pipeline  │
+         │ • Query federation  │
+         │ • Cross-DB queries  │
+         │ • Kernel v1,v3,v4  │
+         └─────────────────────┘
 ```
 
 ### Roadmap (50+ Databases)
 
-The architecture is designed to scale to 50+ heterogeneous databases across multiple categories:
+**See SCALING_ROADMAP.md for the complete 8-batch expansion plan.**
 
-1. **Internal/Proprietary** - Simulation logs, kernel datasets, research notes
-2. **Cloud Storage** - Google Drive, AWS S3, OneDrive, Dropbox
-3. **Version Control** - GitHub, GitLab repositories
-4. **Public/Research** - ArXiv, PubMed, NASA datasets
-5. **Transactional/IoT** - Sensor streams, CARLA simulation logs
-6. **Experimental** - FPGA outputs, quantum simulator data
+The architecture scales across 8 batches to 50+ databases:
+
+- **Batch 1-2**: ✅ Complete (10 databases)
+- **Batch 3**: Event sourcing (Kafka, Pulsar, RabbitMQ, NATS, DuckDB, SQLite)
+- **Batch 4**: Analytics/OLAP (Druid, Pinot, Trino, BigQuery, Greenplum, CrateDB)
+- **Batch 5**: Cloud-native (MinIO, Ceph, Cassandra, ScyllaDB, CockroachDB)
+- **Batch 6**: Search/Graph (MeiliSearch, Typesense, Dgraph, ArangoDB, OrientDB)
+- **Batch 7**: Performance (KeyDB, Memcached, Hazelcast, VictoriaMetrics, QuestDB)
+- **Batch 8**: Experimental (SurrealDB, EdgeDB, Neon, FaunaDB, Immudb)
 
 ## Project Goals
 
