@@ -6,11 +6,11 @@ neo4j==5.14.1
 clickhouse-connect==0.6.23
 
 # === BATCH 2: Additional database clients ===
-pymongo==4.6.1
+pymongo==4.6.3
 elasticsearch==8.11.1
 
 # HTTP and utilities
-requests==2.31.0
+requests==2.32.4
 python-dotenv==1.0.0
 
 # Data processing
