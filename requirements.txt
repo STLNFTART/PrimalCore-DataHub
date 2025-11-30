@@ -1,0 +1,21 @@
+# === BATCH 1: Core database clients ===
+redis==5.0.1
+psycopg2-binary==2.9.9
+influxdb-client==1.38.0
+neo4j==5.14.1
+clickhouse-connect==0.6.23
+
+# === BATCH 2: Additional database clients ===
+pymongo==4.6.1
+elasticsearch==8.11.1
+
+# HTTP and utilities
+requests==2.31.0
+python-dotenv==1.0.0
+
+# Data processing
+numpy==1.26.2
+pandas==2.1.4
+
+# === Future batches ===
+# kafka-python==2.0.2  # For Batch 3 event sourcing
